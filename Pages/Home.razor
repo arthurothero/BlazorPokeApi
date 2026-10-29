@@ -1,0 +1,98 @@
+@page "/"
+@using System.Globalization
+@using System.Net
+@using BlazorPokeApi.Models
+@inject HttpClient Http
+
+<PageTitle>Buscar Pokémon</PageTitle>
+
+<h1>Buscar Pokémon</h1>
+
+<div class="mb-3">
+    <label for="nomeInput" class="form-label">Nome do Pokémon:</label>
+    <input id="nomeInput" class="form-control" @bind="nomeDigitado" @bind:event="oninput"
+           @onkeydown="AoPressionarTecla" placeholder="Ex: pikachu" />
+</div>
+
+<button class="btn btn-primary" @onclick="BuscarPokemon" disabled="@carregando">
+    @(carregando ? "Buscando..." : "Buscar Pokémon")
+</button>
+
+@if (!string.IsNullOrEmpty(mensagemErro))
+{
+    <div class="alert alert-danger mt-3">@mensagemErro</div>
+}
+
+@if (pokemon is not null)
+{
+    <hr />
+    <h3>Detalhes do Pokémon</h3>
+
+    @if (!string.IsNullOrEmpty(pokemon.sprites?.other?.officialArtwork?.front_default))
+    {
+        <img src="@pokemon.sprites.other.officialArtwork.front_default" alt="@pokemon.name" width="150" />
+    }
+
+    <p><strong>ID:</strong> @pokemon.id</p>
+    <p><strong>Nome:</strong> @pokemon.name</p>
+    <p><strong>Altura:</strong> @Formatar(pokemon.height / 10.0) m</p>
+    <p><strong>Peso:</strong> @Formatar(pokemon.weight / 10.0) kg</p>
+}
+
+@code {
+    private string nomeDigitado = string.Empty;
+    private Pokemon? pokemon;
+    private string? mensagemErro;
+    private bool carregando;
+
+    private async Task BuscarPokemon()
+    {
+        pokemon = null;
+        mensagemErro = null;
+
+        // A PokeAPI só aceita o nome em minúsculas.
+        var nome = nomeDigitado.Trim().ToLowerInvariant();
+
+        if (string.IsNullOrEmpty(nome))
+        {
+            mensagemErro = "Informe o nome de um Pokémon.";
+            return;
+        }
+
+        carregando = true;
+
+        try
+        {
+            var resposta = await Http.GetAsync($"api/v2/pokemon/{Uri.EscapeDataString(nome)}");
+
+            if (resposta.StatusCode == HttpStatusCode.NotFound)
+            {
+                mensagemErro = $"Pokémon \"{nome}\" não encontrado.";
+                return;
+            }
+
+            resposta.EnsureSuccessStatusCode();
+            pokemon = await resposta.Content.ReadFromJsonAsync<Pokemon>();
+        }
+        catch (HttpRequestException ex)
+        {
+            mensagemErro = $"Erro ao acessar a PokeAPI: {ex.Message}";
+        }
+        finally
+        {
+            carregando = false;
+        }
+    }
+
+    // Exibe com vírgula decimal (0,4 m) sem depender dos dados de cultura do navegador.
+    private static string Formatar(double valor) =>
+        valor.ToString("0.##", CultureInfo.InvariantCulture).Replace('.', ',');
+
+    private async Task AoPressionarTecla(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !carregando)
+        {
+            await BuscarPokemon();
+        }
+    }
+}
